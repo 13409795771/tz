@@ -13,118 +13,200 @@
         <a class="back-link" href="index.html">← 返回首页</a>
       </header>
 
-      <section class="panel">
-        <p>点击棋子后，再点击目标位置即可走子（当前为基础演示版，不校验完整象棋规则）。</p>
+      <section class="panel ornate">
+        <div class="game-toolbar">
+          <p id="xq-status">红方回合</p>
+          <button id="xq-restart" class="mini-btn">重新开始</button>
+        </div>
         <div id="xiangqi-board" class="xiangqi-board" aria-label="中国象棋棋盘"></div>
       </section>
     </main>
 
     <script>
-      const ROWS = 10;
-      const COLS = 9;
+      const ROWS = 10, COLS = 9;
+      const statusEl = document.getElementById("xq-status");
+      const boardEl = document.getElementById("xiangqi-board");
+      const restartBtn = document.getElementById("xq-restart");
 
-      const initialPieces = [
-        { r: 0, c: 0, t: "車", side: "black" },
-        { r: 0, c: 1, t: "馬", side: "black" },
-        { r: 0, c: 2, t: "象", side: "black" },
-        { r: 0, c: 3, t: "士", side: "black" },
-        { r: 0, c: 4, t: "將", side: "black" },
-        { r: 0, c: 5, t: "士", side: "black" },
-        { r: 0, c: 6, t: "象", side: "black" },
-        { r: 0, c: 7, t: "馬", side: "black" },
-        { r: 0, c: 8, t: "車", side: "black" },
-        { r: 2, c: 1, t: "砲", side: "black" },
-        { r: 2, c: 7, t: "砲", side: "black" },
-        { r: 3, c: 0, t: "卒", side: "black" },
-        { r: 3, c: 2, t: "卒", side: "black" },
-        { r: 3, c: 4, t: "卒", side: "black" },
-        { r: 3, c: 6, t: "卒", side: "black" },
-        { r: 3, c: 8, t: "卒", side: "black" },
-
-        { r: 9, c: 0, t: "俥", side: "red" },
-        { r: 9, c: 1, t: "傌", side: "red" },
-        { r: 9, c: 2, t: "相", side: "red" },
-        { r: 9, c: 3, t: "仕", side: "red" },
-        { r: 9, c: 4, t: "帥", side: "red" },
-        { r: 9, c: 5, t: "仕", side: "red" },
-        { r: 9, c: 6, t: "相", side: "red" },
-        { r: 9, c: 7, t: "傌", side: "red" },
-        { r: 9, c: 8, t: "俥", side: "red" },
-        { r: 7, c: 1, t: "炮", side: "red" },
-        { r: 7, c: 7, t: "炮", side: "red" },
-        { r: 6, c: 0, t: "兵", side: "red" },
-        { r: 6, c: 2, t: "兵", side: "red" },
-        { r: 6, c: 4, t: "兵", side: "red" },
-        { r: 6, c: 6, t: "兵", side: "red" },
-        { r: 6, c: 8, t: "兵", side: "red" },
+      const initial = [
+        ["br", "bn", "bb", "ba", "bk", "ba", "bb", "bn", "br"],
+        [null, null, null, null, null, null, null, null, null],
+        [null, "bc", null, null, null, null, null, "bc", null],
+        ["bp", null, "bp", null, "bp", null, "bp", null, "bp"],
+        [null, null, null, null, null, null, null, null, null],
+        [null, null, null, null, null, null, null, null, null],
+        ["rp", null, "rp", null, "rp", null, "rp", null, "rp"],
+        [null, "rc", null, null, null, null, null, "rc", null],
+        [null, null, null, null, null, null, null, null, null],
+        ["rr", "rn", "rb", "ra", "rk", "ra", "rb", "rn", "rr"],
       ];
+      const labels = { r: "俥", n: "傌", b: "相", a: "仕", k: "帥", c: "炮", p: "兵", br: "車", bn: "馬", bb: "象", ba: "士", bk: "將", bc: "砲", bp: "卒" };
+      let board, turn, selected, winner;
 
-      const board = document.getElementById("xiangqi-board");
-      const state = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-      let selected = null;
+      const clone = (b) => b.map((r) => r.slice());
+      const inBounds = (r, c) => r >= 0 && r < 10 && c >= 0 && c < 9;
+      const sideOf = (p) => (p ? p[0] : null);
+      const typeOf = (p) => (p ? p[1] : null);
 
-      initialPieces.forEach((p) => {
-        state[p.r][p.c] = { t: p.t, side: p.side };
-      });
+      function reset() { board = clone(initial); turn = "r"; selected = null; winner = null; render(); }
+      restartBtn.onclick = reset;
 
-      function render() {
-        board.innerHTML = "";
-        for (let r = 0; r < ROWS; r++) {
-          for (let c = 0; c < COLS; c++) {
-            const cell = document.createElement("button");
-            cell.className = "cell";
-            cell.dataset.row = r;
-            cell.dataset.col = c;
+      function palace(side) { return side === "r" ? { rs: 7, re: 9, cs: 3, ce: 5 } : { rs: 0, re: 2, cs: 3, ce: 5 }; }
+      function inPalace(side, r, c) { const p = palace(side); return r >= p.rs && r <= p.re && c >= p.cs && c <= p.ce; }
 
-            if (r === 4 || r === 5) {
-              cell.classList.add("river");
-              if (r === 4) {
-                cell.textContent = c === 4 ? "楚河 汉界" : "";
-              }
-            }
-
-            const piece = state[r][c];
-            if (piece) {
-              const token = document.createElement("span");
-              token.className = `piece ${piece.side}`;
-              token.textContent = piece.t;
-              cell.appendChild(token);
-            }
-
-            if (selected && selected.r === r && selected.c === c) {
-              cell.classList.add("selected");
-            }
-
-            cell.addEventListener("click", onCellClick);
-            board.appendChild(cell);
-          }
-        }
+      function clearPath(fr, fc, tr, tc, b) {
+        const dr = Math.sign(tr - fr), dc = Math.sign(tc - fc);
+        let r = fr + dr, c = fc + dc;
+        while (r !== tr || c !== tc) { if (b[r][c]) return false; r += dr; c += dc; }
+        return true;
+      }
+      function countPath(fr, fc, tr, tc, b) {
+        const dr = Math.sign(tr - fr), dc = Math.sign(tc - fc);
+        let r = fr + dr, c = fc + dc, n = 0;
+        while (r !== tr || c !== tc) { if (b[r][c]) n++; r += dr; c += dc; }
+        return n;
       }
 
-      function onCellClick(e) {
-        const r = Number(e.currentTarget.dataset.row);
-        const c = Number(e.currentTarget.dataset.col);
-        const clickedPiece = state[r][c];
+      function pseudoLegal(fr, fc, tr, tc, b) {
+        if (!inBounds(tr, tc) || (fr === tr && fc === tc)) return false;
+        const p = b[fr][fc], t = b[tr][tc]; if (!p) return false;
+        const s = sideOf(p), ty = typeOf(p);
+        if (t && sideOf(t) === s) return false;
+        const dr = tr - fr, dc = tc - fc, adr = Math.abs(dr), adc = Math.abs(dc);
 
-        if (!selected) {
-          if (clickedPiece) selected = { r, c };
-          render();
-          return;
+        if (ty === "r") return (fr === tr || fc === tc) && clearPath(fr, fc, tr, tc, b);
+        if (ty === "n") {
+          if (!(adr === 2 && adc === 1) && !(adr === 1 && adc === 2)) return false;
+          const leg = adr === 2 ? [fr + dr / 2, fc] : [fr, fc + dc / 2];
+          return !b[leg[0]][leg[1]];
         }
-
-        if (selected.r === r && selected.c === c) {
-          selected = null;
-          render();
-          return;
+        if (ty === "b") {
+          if (!(adr === 2 && adc === 2)) return false;
+          if (s === "r" && tr < 5) return false;
+          if (s === "b" && tr > 4) return false;
+          return !b[fr + dr / 2][fc + dc / 2];
         }
+        if (ty === "a") return adr === 1 && adc === 1 && inPalace(s, tr, tc);
+        if (ty === "k") {
+          if (!inPalace(s, tr, tc)) return false;
+          return adr + adc === 1;
+        }
+        if (ty === "c") {
+          if (!(fr === tr || fc === tc)) return false;
+          const n = countPath(fr, fc, tr, tc, b);
+          return t ? n === 1 : n === 0;
+        }
+        if (ty === "p") {
+          const forward = s === "r" ? -1 : 1;
+          const crossed = s === "r" ? fr <= 4 : fr >= 5;
+          if (dr === forward && dc === 0) return true;
+          if (crossed && dr === 0 && adc === 1) return true;
+          return false;
+        }
+        return false;
+      }
 
-        state[r][c] = state[selected.r][selected.c];
-        state[selected.r][selected.c] = null;
-        selected = null;
+      function generalsFace(b) {
+        let rk, bk;
+        for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) {
+          if (b[r][c] === "rk") rk = [r, c];
+          if (b[r][c] === "bk") bk = [r, c];
+        }
+        if (!rk || !bk || rk[1] !== bk[1]) return false;
+        const c = rk[1], [s, e] = rk[0] < bk[0] ? [rk[0] + 1, bk[0]] : [bk[0] + 1, rk[0]];
+        for (let r = s; r < e; r++) if (b[r][c]) return false;
+        return true;
+      }
+
+      function inCheck(side, b) {
+        let kr = -1, kc = -1;
+        for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) if (b[r][c] === side + "k") { kr = r; kc = c; }
+        if (kr < 0) return true;
+        const enemy = side === "r" ? "b" : "r";
+        for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) {
+          if (b[r][c] && sideOf(b[r][c]) === enemy && pseudoLegal(r, c, kr, kc, b)) return true;
+        }
+        return generalsFace(b);
+      }
+
+      function legalMove(fr, fc, tr, tc, side, b) {
+        if (!pseudoLegal(fr, fc, tr, tc, b)) return false;
+        const nb = clone(b); nb[tr][tc] = nb[fr][fc]; nb[fr][fc] = null;
+        if (generalsFace(nb)) return false;
+        return !inCheck(side, nb);
+      }
+
+      function allMoves(side, b) {
+        const moves = [];
+        for (let fr = 0; fr < 10; fr++) for (let fc = 0; fc < 9; fc++) {
+          if (!b[fr][fc] || sideOf(b[fr][fc]) !== side) continue;
+          for (let tr = 0; tr < 10; tr++) for (let tc = 0; tc < 9; tc++) if (legalMove(fr, fc, tr, tc, side, b)) moves.push([fr, fc, tr, tc]);
+        }
+        return moves;
+      }
+
+      function evaluate(b) {
+        const val = { k: 10000, r: 500, n: 300, b: 120, a: 120, c: 280, p: 90 };
+        let s = 0;
+        for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) {
+          const p = b[r][c]; if (!p) continue;
+          const sign = sideOf(p) === "b" ? 1 : -1;
+          s += sign * val[typeOf(p)];
+        }
+        return s;
+      }
+
+      function botMove() {
+        if (turn !== "b" || winner) return;
+        const moves = allMoves("b", board);
+        if (!moves.length) { winner = inCheck("b", board) ? "红方胜（将死）" : "和棋（困毙）"; render(); return; }
+        let best = null, bestScore = -Infinity;
+        for (const m of moves) {
+          const nb = clone(board); nb[m[2]][m[3]] = nb[m[0]][m[1]]; nb[m[0]][m[1]] = null;
+          const score = evaluate(nb) + Math.random() * 5;
+          if (score > bestScore) { bestScore = score; best = m; }
+        }
+        board[best[2]][best[3]] = board[best[0]][best[1]]; board[best[0]][best[1]] = null;
+        turn = "r";
+        if (!allMoves("r", board).length) winner = inCheck("r", board) ? "黑方胜（将死）" : "和棋（困毙）";
         render();
       }
 
-      render();
+      function clickCell(e) {
+        if (winner || turn !== "r") return;
+        const r = +e.currentTarget.dataset.r, c = +e.currentTarget.dataset.c;
+        const p = board[r][c];
+        if (!selected) { if (p && sideOf(p) === "r") selected = [r, c]; render(); return; }
+        const [sr, sc] = selected;
+        if (p && sideOf(p) === "r") { selected = [r, c]; render(); return; }
+        if (legalMove(sr, sc, r, c, "r", board)) {
+          board[r][c] = board[sr][sc]; board[sr][sc] = null; selected = null; turn = "b";
+          if (!allMoves("b", board).length) winner = inCheck("b", board) ? "红方胜（将死）" : "和棋（困毙）";
+          render();
+          setTimeout(botMove, 300);
+        }
+      }
+
+      function render() {
+        boardEl.innerHTML = "";
+        for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) {
+          const cell = document.createElement("button");
+          cell.className = "cell" + ((r === 4 || r === 5) ? " river" : "") + (selected && selected[0] === r && selected[1] === c ? " selected" : "");
+          cell.dataset.r = r; cell.dataset.c = c;
+          const p = board[r][c];
+          if (p) {
+            const span = document.createElement("span");
+            span.className = `piece ${sideOf(p) === "r" ? "red" : "black"}`;
+            span.textContent = labels[p] || labels[typeOf(p)];
+            cell.appendChild(span);
+          }
+          cell.onclick = clickCell;
+          boardEl.appendChild(cell);
+        }
+        if (winner) statusEl.textContent = winner;
+        else statusEl.textContent = turn === "r" ? "红方回合（你）" : "黑方回合（AI）";
+      }
+      reset();
     </script>
   </body>
 </html>
