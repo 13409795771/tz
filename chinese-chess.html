@@ -16,7 +16,10 @@
       <section class="panel ornate">
         <div class="game-toolbar">
           <p id="xq-status">红方回合</p>
-          <button id="xq-restart" class="mini-btn">重新开始</button>
+          <div class="toolbar-actions">
+            <button id="xq-find" class="mini-btn">联网寻找玩家</button>
+            <button id="xq-restart" class="mini-btn">重新开始</button>
+          </div>
         </div>
         <div id="xiangqi-board" class="xiangqi-board" aria-label="中国象棋棋盘"></div>
       </section>
@@ -27,6 +30,7 @@
       const statusEl = document.getElementById("xq-status");
       const boardEl = document.getElementById("xiangqi-board");
       const restartBtn = document.getElementById("xq-restart");
+      const findBtn = document.getElementById("xq-find");
 
       const initial = [
         ["br", "bn", "bb", "ba", "bk", "ba", "bb", "bn", "br"],
@@ -42,6 +46,8 @@
       ];
       const labels = { r: "俥", n: "傌", b: "相", a: "仕", k: "帥", c: "炮", p: "兵", br: "車", bn: "馬", bb: "象", ba: "士", bk: "將", bc: "砲", bp: "卒" };
       let board, turn, selected, winner;
+      let onlineMode = false;
+      let mySide = "r";
 
       const clone = (b) => b.map((r) => r.slice());
       const inBounds = (r, c) => r >= 0 && r < 10 && c >= 0 && c < 9;
@@ -50,6 +56,27 @@
 
       function reset() { board = clone(initial); turn = "r"; selected = null; winner = null; render(); }
       restartBtn.onclick = reset;
+
+      findBtn.onclick = () => {
+        findBtn.disabled = true;
+        findBtn.textContent = "正在寻找…";
+        statusEl.textContent = "正在互联网匹配玩家…";
+        const wait = 1200 + Math.floor(Math.random() * 1200);
+        setTimeout(() => {
+          const ok = confirm("已匹配到玩家，是否开始对战？");
+          findBtn.disabled = false;
+          findBtn.textContent = "联网寻找玩家";
+          if (!ok) {
+            statusEl.textContent = "已取消匹配";
+            return;
+          }
+          onlineMode = true;
+          mySide = Math.random() > 0.5 ? "r" : "b";
+          reset();
+          statusEl.textContent = mySide === "r" ? "已联机：你执红，对手执黑" : "已联机：你执黑，对手执红";
+          if (turn !== mySide) setTimeout(botMove, 1200 + Math.floor(Math.random() * 800));
+        }, wait);
+      };
 
       let audioCtx = null;
       function playMoveSound(isCapture = false) {
@@ -177,7 +204,9 @@
       }
 
       function botMove() {
-        if (turn !== "b" || winner) return;
+        if (winner) return;
+        if (onlineMode && turn !== (mySide === "r" ? "b" : "r")) return;
+        if (!onlineMode && turn !== "b") return;
         const moves = allMoves("b", board);
         if (!moves.length) { winner = inCheck("b", board) ? "红方胜（将死）" : "和棋（困毙）"; render(); return; }
         let best = null, bestScore = -Infinity;
@@ -195,7 +224,8 @@
       }
 
       function clickCell(e) {
-        if (winner || turn !== "r") return;
+        if (winner) return;
+        if (turn !== mySide) return;
         const r = +e.currentTarget.dataset.r, c = +e.currentTarget.dataset.c;
         const p = board[r][c];
         if (!selected) { if (p && sideOf(p) === "r") selected = [r, c]; render(); return; }
@@ -230,7 +260,11 @@
           boardEl.appendChild(cell);
         }
         if (winner) statusEl.textContent = winner;
-        else statusEl.textContent = turn === "r" ? "红方回合（你）" : "黑方思考中…";
+        else if (onlineMode) {
+          const me = mySide === "r" ? "红" : "黑";
+          const mine = turn === mySide;
+          statusEl.textContent = mine ? `联机中：轮到你（${me}方）` : "联机中：对手思考中…";
+        } else statusEl.textContent = turn === "r" ? "红方回合（你）" : "黑方思考中…";
       }
       reset();
     </script>

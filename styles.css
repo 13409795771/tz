@@ -213,3 +213,7 @@ p {
 
 .gm-piece.black { background: radial-gradient(circle at 30% 30%, #666, #111 70%); }
 .gm-piece.white { background: radial-gradient(circle at 30% 30%, #fff, #ddd 70%); border: 1px solid #bbb; }
+
+
+.toolbar-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.mini-btn:disabled { opacity:.65; cursor:not-allowed; }
