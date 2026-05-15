@@ -51,6 +51,26 @@
       function reset() { board = clone(initial); turn = "r"; selected = null; winner = null; render(); }
       restartBtn.onclick = reset;
 
+      let audioCtx = null;
+      function playMoveSound(isCapture = false) {
+        try {
+          if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const now = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(isCapture ? 520 : 420, now);
+          osc.frequency.exponentialRampToValueAtTime(isCapture ? 380 : 300, now + 0.08);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + 0.15);
+        } catch (e) {}
+      }
+
       function palace(side) { return side === "r" ? { rs: 7, re: 9, cs: 3, ce: 5 } : { rs: 0, re: 2, cs: 3, ce: 5 }; }
       function inPalace(side, r, c) { const p = palace(side); return r >= p.rs && r <= p.re && c >= p.cs && c <= p.ce; }
 
@@ -166,7 +186,9 @@
           const score = evaluate(nb) + Math.random() * 5;
           if (score > bestScore) { bestScore = score; best = m; }
         }
+        const isCapture = !!board[best[2]][best[3]];
         board[best[2]][best[3]] = board[best[0]][best[1]]; board[best[0]][best[1]] = null;
+        playMoveSound(isCapture);
         turn = "r";
         if (!allMoves("r", board).length) winner = inCheck("r", board) ? "黑方胜（将死）" : "和棋（困毙）";
         render();
@@ -180,10 +202,14 @@
         const [sr, sc] = selected;
         if (p && sideOf(p) === "r") { selected = [r, c]; render(); return; }
         if (legalMove(sr, sc, r, c, "r", board)) {
+          const isCapture = !!board[r][c];
           board[r][c] = board[sr][sc]; board[sr][sc] = null; selected = null; turn = "b";
+          playMoveSound(isCapture);
           if (!allMoves("b", board).length) winner = inCheck("b", board) ? "红方胜（将死）" : "和棋（困毙）";
+          statusEl.textContent = "黑方思考中…";
           render();
-          setTimeout(botMove, 300);
+          const thinkMs = 1000 + Math.floor(Math.random() * 1000);
+          setTimeout(botMove, thinkMs);
         }
       }
 
@@ -204,7 +230,7 @@
           boardEl.appendChild(cell);
         }
         if (winner) statusEl.textContent = winner;
-        else statusEl.textContent = turn === "r" ? "红方回合（你）" : "黑方回合（AI）";
+        else statusEl.textContent = turn === "r" ? "红方回合（你）" : "黑方思考中…";
       }
       reset();
     </script>
