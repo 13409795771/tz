@@ -89,3 +89,55 @@ p {
   color: #8b5e34;
   background: #fff8ef;
 }
+
+
+.xiangqi-board {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(9, minmax(34px, 1fr));
+  gap: 2px;
+  background: #b27a45;
+  padding: 8px;
+  border-radius: 10px;
+}
+
+.cell {
+  aspect-ratio: 1 / 1;
+  border: 1px solid #b07a47;
+  background: #f8dfb5;
+  color: #8b5e34;
+  font-size: 12px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.cell.river {
+  background: #f2cf9f;
+}
+
+.cell.selected {
+  outline: 3px solid #1f6feb;
+  z-index: 1;
+}
+
+.piece {
+  width: 82%;
+  height: 82%;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 700;
+  background: #fff8eb;
+  border: 2px solid #d3b188;
+}
+
+.piece.red {
+  color: #b3261e;
+}
+
+.piece.black {
+  color: #1c1c1c;
+}

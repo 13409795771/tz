@@ -9,13 +9,122 @@
   <body>
     <main class="page">
       <header>
-        <h1>中国象棋模块</h1>
+        <h1>中国象棋</h1>
         <a class="back-link" href="index.html">← 返回首页</a>
       </header>
+
       <section class="panel">
-        <p>这里是象棋页面入口。你可以在这里继续接入象棋的棋盘与走子逻辑。</p>
-        <div class="placeholder">象棋棋盘区域（预留）</div>
+        <p>点击棋子后，再点击目标位置即可走子（当前为基础演示版，不校验完整象棋规则）。</p>
+        <div id="xiangqi-board" class="xiangqi-board" aria-label="中国象棋棋盘"></div>
       </section>
     </main>
+
+    <script>
+      const ROWS = 10;
+      const COLS = 9;
+
+      const initialPieces = [
+        { r: 0, c: 0, t: "車", side: "black" },
+        { r: 0, c: 1, t: "馬", side: "black" },
+        { r: 0, c: 2, t: "象", side: "black" },
+        { r: 0, c: 3, t: "士", side: "black" },
+        { r: 0, c: 4, t: "將", side: "black" },
+        { r: 0, c: 5, t: "士", side: "black" },
+        { r: 0, c: 6, t: "象", side: "black" },
+        { r: 0, c: 7, t: "馬", side: "black" },
+        { r: 0, c: 8, t: "車", side: "black" },
+        { r: 2, c: 1, t: "砲", side: "black" },
+        { r: 2, c: 7, t: "砲", side: "black" },
+        { r: 3, c: 0, t: "卒", side: "black" },
+        { r: 3, c: 2, t: "卒", side: "black" },
+        { r: 3, c: 4, t: "卒", side: "black" },
+        { r: 3, c: 6, t: "卒", side: "black" },
+        { r: 3, c: 8, t: "卒", side: "black" },
+
+        { r: 9, c: 0, t: "俥", side: "red" },
+        { r: 9, c: 1, t: "傌", side: "red" },
+        { r: 9, c: 2, t: "相", side: "red" },
+        { r: 9, c: 3, t: "仕", side: "red" },
+        { r: 9, c: 4, t: "帥", side: "red" },
+        { r: 9, c: 5, t: "仕", side: "red" },
+        { r: 9, c: 6, t: "相", side: "red" },
+        { r: 9, c: 7, t: "傌", side: "red" },
+        { r: 9, c: 8, t: "俥", side: "red" },
+        { r: 7, c: 1, t: "炮", side: "red" },
+        { r: 7, c: 7, t: "炮", side: "red" },
+        { r: 6, c: 0, t: "兵", side: "red" },
+        { r: 6, c: 2, t: "兵", side: "red" },
+        { r: 6, c: 4, t: "兵", side: "red" },
+        { r: 6, c: 6, t: "兵", side: "red" },
+        { r: 6, c: 8, t: "兵", side: "red" },
+      ];
+
+      const board = document.getElementById("xiangqi-board");
+      const state = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+      let selected = null;
+
+      initialPieces.forEach((p) => {
+        state[p.r][p.c] = { t: p.t, side: p.side };
+      });
+
+      function render() {
+        board.innerHTML = "";
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const cell = document.createElement("button");
+            cell.className = "cell";
+            cell.dataset.row = r;
+            cell.dataset.col = c;
+
+            if (r === 4 || r === 5) {
+              cell.classList.add("river");
+              if (r === 4) {
+                cell.textContent = c === 4 ? "楚河 汉界" : "";
+              }
+            }
+
+            const piece = state[r][c];
+            if (piece) {
+              const token = document.createElement("span");
+              token.className = `piece ${piece.side}`;
+              token.textContent = piece.t;
+              cell.appendChild(token);
+            }
+
+            if (selected && selected.r === r && selected.c === c) {
+              cell.classList.add("selected");
+            }
+
+            cell.addEventListener("click", onCellClick);
+            board.appendChild(cell);
+          }
+        }
+      }
+
+      function onCellClick(e) {
+        const r = Number(e.currentTarget.dataset.row);
+        const c = Number(e.currentTarget.dataset.col);
+        const clickedPiece = state[r][c];
+
+        if (!selected) {
+          if (clickedPiece) selected = { r, c };
+          render();
+          return;
+        }
+
+        if (selected.r === r && selected.c === c) {
+          selected = null;
+          render();
+          return;
+        }
+
+        state[r][c] = state[selected.r][selected.c];
+        state[selected.r][selected.c] = null;
+        selected = null;
+        render();
+      }
+
+      render();
+    </script>
   </body>
 </html>
