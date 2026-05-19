@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>中国象棋</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <h1>中国象棋</h1>
+        <a class="back-link" href="index.html">← 返回首页</a>
+      </header>
+
+      <section class="panel ornate">
+        <div class="game-toolbar">
+          <p id="xq-status">红方回合</p>
+          <div class="toolbar-actions">
+            <input id="xq-room" class="room-input" placeholder="房间号(4-8位)" />
+            <button id="xq-find" class="mini-btn">加入房间</button>
+            <button id="xq-restart" class="mini-btn">重新开始</button>
+          </div>
+        </div>
+        <div id="xiangqi-board" class="xiangqi-board" aria-label="中国象棋棋盘"></div>
+      </section>
+    </main>
+    <script src="realtime.js"></script>
+    <script>
+      const ROWS = 10, COLS = 9;
+      const statusEl = document.getElementById("xq-status");
+      const boardEl = document.getElementById("xiangqi-board");
+      const restartBtn = document.getElementById("xq-restart");
+      const findBtn = document.getElementById("xq-find");
+      const roomInput = document.getElementById("xq-room");
+
+      const initial = [
+        ["br", "bn", "bb", "ba", "bk", "ba", "bb", "bn", "br"],
+        [null, null, null, null, null, null, null, null, null],
+        [null, "bc", null, null, null, null, null, "bc", null],
+        ["bp", null, "bp", null, "bp", null, "bp", null, "bp"],
+        [null, null, null, null, null, null, null, null, null],
+        [null, null, null, null, null, null, null, null, null],
+        ["rp", null, "rp", null, "rp", null, "rp", null, "rp"],
+        [null, "rc", null, null, null, null, null, "rc", null],
+        [null, null, null, null, null, null, null, null, null],
+        ["rr", "rn", "rb", "ra", "rk", "ra", "rb", "rn", "rr"],
+      ];
+      const labels = { r: "俥", n: "傌", b: "相", a: "仕", k: "帥", c: "炮", p: "兵", br: "車", bn: "馬", bb: "象", ba: "士", bk: "將", bc: "砲", bp: "卒" };
+      let board, turn, selected, winner;
+      let onlineMode = false;
+      let mySide = "r";
+      let rtc = null;
+
+      const clone = (b) => b.map((r) => r.slice());
+      const inBounds = (r, c) => r >= 0 && r < 10 && c >= 0 && c < 9;
+      const sideOf = (p) => (p ? p[0] : null);
+      const typeOf = (p) => (p ? p[1] : null);
+
+      function reset() { board = clone(initial); turn = "r"; selected = null; winner = null; render(); }
+      restartBtn.onclick = reset;
+
+      findBtn.onclick = () => {
+        const room = roomInput.value.trim().toUpperCase();
+        if (!room) return alert("请输入房间号");
+        rtc = new RealtimeClient("xiangqi", initial);
+        rtc.on("err", (m) => alert(m.msg));
+        rtc.on("joined", (m) => {
+          onlineMode = true;
+          mySide = m.seat === "A" ? "r" : "b";
+          statusEl.textContent = `已加入房间 ${m.room}，等待对手…`;
+        });
+        rtc.on("start", (m) => {
+          board = m.state.board;
+          turn = m.state.turn === "A" ? "r" : "b";
+          winner = null; selected = null;
+          render();
+        });
+        rtc.on("sync", (m) => {
+          board = m.state.board;
+          turn = m.state.turn === "A" ? "r" : "b";
+          winner = m.state.winner || null;
+          selected = null;
+          render();
+        });
+        rtc.on("closed", () => statusEl.textContent = "连接断开，可重连房间");
+        rtc.connect(room, "玩家");
+      };
+
+      let audioCtx = null;
+      function playMoveSound(isCapture = false) {
+        try {
+          if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const now = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(isCapture ? 520 : 420, now);
+          osc.frequency.exponentialRampToValueAtTime(isCapture ? 380 : 300, now + 0.08);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + 0.15);
+        } catch (e) {}
+      }
+
+      function palace(side) { return side === "r" ? { rs: 7, re: 9, cs: 3, ce: 5 } : { rs: 0, re: 2, cs: 3, ce: 5 }; }
+      function inPalace(side, r, c) { const p = palace(side); return r >= p.rs && r <= p.re && c >= p.cs && c <= p.ce; }
+
+      function clearPath(fr, fc, tr, tc, b) {
+        const dr = Math.sign(tr - fr), dc = Math.sign(tc - fc);
+        let r = fr + dr, c = fc + dc;
+        while (r !== tr || c !== tc) { if (b[r][c]) return false; r += dr; c += dc; }
+        return true;
+      }
+      function countPath(fr, fc, tr, tc, b) {
+        const dr = Math.sign(tr - fr), dc = Math.sign(tc - fc);
+        let r = fr + dr, c = fc + dc, n = 0;
+        while (r !== tr || c !== tc) { if (b[r][c]) n++; r += dr; c += dc; }
+        return n;
+      }
+
+      function pseudoLegal(fr, fc, tr, tc, b) {
+        if (!inBounds(tr, tc) || (fr === tr && fc === tc)) return false;
+        const p = b[fr][fc], t = b[tr][tc]; if (!p) return false;
+        const s = sideOf(p), ty = typeOf(p);
+        if (t && sideOf(t) === s) return false;
+        const dr = tr - fr, dc = tc - fc, adr = Math.abs(dr), adc = Math.abs(dc);
+
+        if (ty === "r") return (fr === tr || fc === tc) && clearPath(fr, fc, tr, tc, b);
+        if (ty === "n") {
+          if (!(adr === 2 && adc === 1) && !(adr === 1 && adc === 2)) return false;
+          const leg = adr === 2 ? [fr + dr / 2, fc] : [fr, fc + dc / 2];
+          return !b[leg[0]][leg[1]];
+        }
+        if (ty === "b") {
+          if (!(adr === 2 && adc === 2)) return false;
+          if (s === "r" && tr < 5) return false;
+          if (s === "b" && tr > 4) return false;
+          return !b[fr + dr / 2][fc + dc / 2];
+        }
+        if (ty === "a") return adr === 1 && adc === 1 && inPalace(s, tr, tc);
+        if (ty === "k") {
+          if (!inPalace(s, tr, tc)) return false;
+          return adr + adc === 1;
+        }
+        if (ty === "c") {
+          if (!(fr === tr || fc === tc)) return false;
+          const n = countPath(fr, fc, tr, tc, b);
+          return t ? n === 1 : n === 0;
+        }
+        if (ty === "p") {
+          const forward = s === "r" ? -1 : 1;
+          const crossed = s === "r" ? fr <= 4 : fr >= 5;
+          if (dr === forward && dc === 0) return true;
+          if (crossed && dr === 0 && adc === 1) return true;
+          return false;
+        }
+        return false;
+      }
+
+      function generalsFace(b) {
+        let rk, bk;
+        for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) {
+          if (b[r][c] === "rk") rk = [r, c];
+          if (b[r][c] === "bk") bk = [r, c];
+        }
+        if (!rk || !bk || rk[1] !== bk[1]) return false;
+        const c = rk[1], [s, e] = rk[0] < bk[0] ? [rk[0] + 1, bk[0]] : [bk[0] + 1, rk[0]];
+        for (let r = s; r < e; r++) if (b[r][c]) return false;
+        return true;
+      }
+
+      function inCheck(side, b) {
+        let kr = -1, kc = -1;
+        for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) if (b[r][c] === side + "k") { kr = r; kc = c; }
+        if (kr < 0) return true;
+        const enemy = side === "r" ? "b" : "r";
+        for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) {
+          if (b[r][c] && sideOf(b[r][c]) === enemy && pseudoLegal(r, c, kr, kc, b)) return true;
+        }
+        return generalsFace(b);
+      }
+
+      function legalMove(fr, fc, tr, tc, side, b) {
+        if (!pseudoLegal(fr, fc, tr, tc, b)) return false;
+        const nb = clone(b); nb[tr][tc] = nb[fr][fc]; nb[fr][fc] = null;
+        if (generalsFace(nb)) return false;
+        return !inCheck(side, nb);
+      }
+
+      function allMoves(side, b) {
+        const moves = [];
+        for (let fr = 0; fr < 10; fr++) for (let fc = 0; fc < 9; fc++) {
+          if (!b[fr][fc] || sideOf(b[fr][fc]) !== side) continue;
+          for (let tr = 0; tr < 10; tr++) for (let tc = 0; tc < 9; tc++) if (legalMove(fr, fc, tr, tc, side, b)) moves.push([fr, fc, tr, tc]);
+        }
+        return moves;
+      }
+
+      function evaluate(b) {
+        const val = { k: 10000, r: 500, n: 300, b: 120, a: 120, c: 280, p: 90 };
+        let s = 0;
+        for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) {
+          const p = b[r][c]; if (!p) continue;
+          const sign = sideOf(p) === "b" ? 1 : -1;
+          s += sign * val[typeOf(p)];
+        }
+        return s;
+      }
+
+      function botMove() {
+        if (winner) return;
+        if (onlineMode && turn !== (mySide === "r" ? "b" : "r")) return;
+        if (!onlineMode && turn !== "b") return;
+        const moves = allMoves("b", board);
+        if (!moves.length) { winner = inCheck("b", board) ? "红方胜（将死）" : "和棋（困毙）"; render(); return; }
+        let best = null, bestScore = -Infinity;
+        for (const m of moves) {
+          const nb = clone(board); nb[m[2]][m[3]] = nb[m[0]][m[1]]; nb[m[0]][m[1]] = null;
+          const score = evaluate(nb) + Math.random() * 5;
+          if (score > bestScore) { bestScore = score; best = m; }
+        }
+        const isCapture = !!board[best[2]][best[3]];
+        board[best[2]][best[3]] = board[best[0]][best[1]]; board[best[0]][best[1]] = null;
+        playMoveSound(isCapture);
+        turn = "r";
+        if (!allMoves("r", board).length) winner = inCheck("r", board) ? "黑方胜（将死）" : "和棋（困毙）";
+        render();
+      }
+
+      function clickCell(e) {
+        if (winner) return;
+        if (turn !== mySide) return;
+        const r = +e.currentTarget.dataset.r, c = +e.currentTarget.dataset.c;
+        const p = board[r][c];
+        if (!selected) { if (p && sideOf(p) === "r") selected = [r, c]; render(); return; }
+        const [sr, sc] = selected;
+        if (p && sideOf(p) === "r") { selected = [r, c]; render(); return; }
+        if (legalMove(sr, sc, r, c, "r", board)) {
+          const isCapture = !!board[r][c];
+          board[r][c] = board[sr][sc]; board[sr][sc] = null; selected = null; turn = "b";
+          playMoveSound(isCapture);
+          if (!allMoves("b", board).length) winner = inCheck("b", board) ? "红方胜（将死）" : "和棋（困毙）";
+          statusEl.textContent = "黑方思考中…";
+          render();
+          if (onlineMode && rtc) {
+            rtc.sync({ board, turn: turn === "r" ? "A" : "B", winner });
+          } else {
+            const thinkMs = 1000 + Math.floor(Math.random() * 1000);
+            setTimeout(botMove, thinkMs);
+          }
+        }
+      }
+
+      function render() {
+        boardEl.innerHTML = "";
+        for (let r = 0; r < 10; r++) for (let c = 0; c < 9; c++) {
+          const cell = document.createElement("button");
+          cell.className = "cell" + ((r === 4 || r === 5) ? " river" : "") + (selected && selected[0] === r && selected[1] === c ? " selected" : "");
+          cell.dataset.r = r; cell.dataset.c = c;
+          const p = board[r][c];
+          if (p) {
+            const span = document.createElement("span");
+            span.className = `piece ${sideOf(p) === "r" ? "red" : "black"}`;
+            span.textContent = labels[p] || labels[typeOf(p)];
+            cell.appendChild(span);
+          }
+          cell.onclick = clickCell;
+          boardEl.appendChild(cell);
+        }
+        if (winner) statusEl.textContent = winner;
+        else if (onlineMode) {
+          const me = mySide === "r" ? "红" : "黑";
+          const mine = turn === mySide;
+          statusEl.textContent = mine ? `联机中：轮到你（${me}方）` : "联机中：对手思考中…";
+        } else statusEl.textContent = turn === "r" ? "红方回合（你）" : "黑方思考中…";
+      }
+      reset();
+    </script>
+  </body>
+</html>

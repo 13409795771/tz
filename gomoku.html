@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>五子棋</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <h1>五子棋</h1>
+        <a class="back-link" href="index.html">← 返回首页</a>
+      </header>
+      <section class="panel ornate">
+        <div class="game-toolbar">
+          <p id="gm-status">黑棋先行（你执黑）</p>
+          <div class="toolbar-actions">
+            <input id="gm-room" class="room-input" placeholder="房间号(4-8位)" />
+            <button id="gm-find" class="mini-btn">加入房间</button>
+            <button id="gm-restart" class="mini-btn">重新开始</button>
+          </div>
+        </div>
+        <div id="gomoku-board" class="gomoku-board"></div>
+      </section>
+    </main>
+    <script src="realtime.js"></script>
+    <script>
+      const SIZE = 15;
+      const gmBoardEl = document.getElementById('gomoku-board');
+      const gmStatusEl = document.getElementById('gm-status');
+      const gmRestart = document.getElementById('gm-restart');
+      const gmFind = document.getElementById('gm-find');
+      const gmRoom = document.getElementById('gm-room');
+      let board, turn, over;
+      let onlineMode=false;
+      let myStone=1;
+      let rtc=null;
+      const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+      function init(){ board=Array.from({length:SIZE},()=>Array(SIZE).fill(0)); turn=1; over=false; render();}
+      gmRestart.onclick=init;
+      gmFind.onclick=()=>{
+        const room=gmRoom.value.trim().toUpperCase();
+        if(!room) return alert("请输入房间号");
+        rtc=new RealtimeClient("gomoku", Array.from({length:SIZE},()=>Array(SIZE).fill(0)));
+        rtc.on('err',(m)=>alert(m.msg));
+        rtc.on('joined',(m)=>{ onlineMode=true; myStone=m.seat==='A'?1:2; gmStatusEl.textContent=`已加入房间 ${m.room}，等待对手…`; });
+        rtc.on('start',(m)=>{ board=m.state.board; turn=m.state.turn==='A'?1:2; over=!!m.state.winner; render(); });
+        rtc.on('sync',(m)=>{ board=m.state.board; turn=m.state.turn==='A'?1:2; over=!!m.state.winner; if(m.state.winner) gmStatusEl.textContent=m.state.winner; render(); });
+        rtc.on('closed',()=>gmStatusEl.textContent='连接断开，可重连房间');
+        rtc.connect(room,'玩家');
+      };
+      function inb(r,c){return r>=0&&r<SIZE&&c>=0&&c<SIZE;}
+      function winAt(r,c,s){for(const[d1,d2]of dirs){let n=1;for(let k=1;inb(r+d1*k,c+d2*k)&&board[r+d1*k][c+d2*k]===s;k++)n++;for(let k=1;inb(r-d1*k,c-d2*k)&&board[r-d1*k][c-d2*k]===s;k++)n++;if(n>=5)return true;}return false;}
+      function ai(){if(over)return;let best=null,bestS=-1;for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){if(board[r][c])continue;const s=score(r,c,2)+score(r,c,1)*0.92+Math.random()*0.01;if(s>bestS){bestS=s;best=[r,c];}}if(!best)return;const[r,c]=best;board[r][c]=2;if(winAt(r,c,2)){over=true;gmStatusEl.textContent='白棋胜利（AI）';}else{turn=1;gmStatusEl.textContent='黑棋回合（你）';}render();}
+      function score(r,c,s){let total=0;for(const[d1,d2]of dirs){let a=0,b=0,oa=0,ob=0;for(let k=1;k<=4;k++){const nr=r+d1*k,nc=c+d2*k;if(!inb(nr,nc)){oa=1;break;}if(board[nr][nc]===s)a++;else if(board[nr][nc]===0)break;else{oa=1;break;}}for(let k=1;k<=4;k++){const nr=r-d1*k,nc=c-d2*k;if(!inb(nr,nc)){ob=1;break;}if(board[nr][nc]===s)b++;else if(board[nr][nc]===0)break;else{ob=1;break;}}const n=a+b+1;const open=(oa?0:1)+(ob?0:1);if(n>=5)total+=100000;else if(n===4&&open===2)total+=10000;else if(n===4&&open===1)total+=2000;else if(n===3&&open===2)total+=600;else if(n===3&&open===1)total+=150;else if(n===2&&open===2)total+=80;else total+=10;}return total;}
+      function clickCell(e){if(over||turn!==myStone)return;const r=+e.currentTarget.dataset.r,c=+e.currentTarget.dataset.c;if(board[r][c])return;board[r][c]=myStone;if(winAt(r,c,myStone)){over=true;gmStatusEl.textContent='你胜利了';render();return;}turn=myStone===1?2:1;gmStatusEl.textContent=onlineMode?'联机中：对手思考中…':'白棋思考中…';render();if(onlineMode&&rtc){rtc.sync({board,turn:turn===1?'A':'B',winner:over?'你胜利了':null});}else{setTimeout(ai,1000+Math.floor(Math.random()*1000));}}
+      function render(){if(!over){if(onlineMode){gmStatusEl.textContent = turn===myStone?"联机中：轮到你落子":"联机中：对手思考中…";} else {gmStatusEl.textContent = turn===1?"黑棋回合（你）":"白棋思考中…";}}gmBoardEl.innerHTML='';for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){const cell=document.createElement('button');cell.className='gm-cell';cell.dataset.r=r;cell.dataset.c=c;const v=board[r][c];if(v){const p=document.createElement('span');p.className='gm-piece '+(v===1?'black':'white');cell.appendChild(p);}cell.onclick=clickCell;gmBoardEl.appendChild(cell);}}
+      init();
+    </script>
+  </body>
+</html>
